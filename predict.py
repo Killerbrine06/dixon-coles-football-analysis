@@ -55,18 +55,22 @@ def predict_match(json_path, team1, team2, is_neutral=True, max_goals=10):
         for y in range(max_goals):
             p = poisson_probability(lambda_val, x) * poisson_probability(mu_val, y)
             
-            # Apply the Dixon-Coles low-score correction
+            # Apply the Dixon-Coles low-score correction (fixed formulation)
             if x == 0 and y == 0: p *= max(0, 1 - lambda_val * mu_val * rho)
-            elif x == 1 and y == 0: p *= max(0, 1 + lambda_val * rho)
-            elif x == 0 and y == 1: p *= max(0, 1 + mu_val * rho)
+            elif x == 1 and y == 0: p *= max(0, 1 + mu_val * rho)
+            elif x == 0 and y == 1: p *= max(0, 1 + lambda_val * rho)
             elif x == 1 and y == 1: p *= max(0, 1 - rho)
             
             score_matrix[f"{x}-{y}"] = p
             
-            # Sum the probabilities into the final outcomes
-            if x > y: prob_t1_win += p
-            elif x == y: prob_draw += p
-            else: prob_t2_win += p
+    # Normalize score matrix so total probability sums strictly to 1.0
+    total_prob = sum(score_matrix.values())
+    for k in score_matrix:
+        score_matrix[k] /= total_prob
+        x_val, y_val = map(int, k.split('-'))
+        if x_val > y_val: prob_t1_win += score_matrix[k]
+        elif x_val == y_val: prob_draw += score_matrix[k]
+        else: prob_t2_win += score_matrix[k]
             
     return prob_t1_win, prob_draw, prob_t2_win, score_matrix, lambda_val, mu_val
 
@@ -75,34 +79,44 @@ def predict_match(json_path, team1, team2, is_neutral=True, max_goals=10):
 # ==========================================
 
 if __name__ == "__main__":
-    # Point this to the exact JSON file your optimizer just built
-    json_file = "data/proccessed/world_cup_ready_data.json"
+    import argparse
+    parser = argparse.ArgumentParser(description="Dixon-Coles Match Predictor")
+    parser.add_argument('team1', nargs='?', default="Arsenal", help="Home team name")
+    parser.add_argument('team2', nargs='?', default="Chelsea", help="Away team name")
+    parser.add_argument('--league', choices=['epl', 'laliga'], default='epl', help="League JSON file to use")
+    parser.add_argument('--neutral', action='store_true', help="Whether the match is on neutral ground")
+    args = parser.parse_args()
+
+    json_map = {
+        'epl': "data/proccessed/epl_ready_data.json",
+        'laliga': "data/proccessed/laliga_ready_data.json",
+    }
+    json_file = json_map[args.league]
     
-    # The Matchup (Ensure spelling exactly matches your CSV data)
-    # t1 = "FRA" # France
-    # t2 = "SWE" # Sweden
-    t1 = "ESP" 
-    t2 = "ARG"
+    t1 = args.team1
+    t2 = args.team2
     
     try:
         p_win, p_draw, p_loss, matrix, xg1, xg2 = predict_match(
-            json_file, t1, t2, is_neutral=True
+            json_file, t1, t2, is_neutral=args.neutral
         )
         
-        print(f"--- MATCH PREDICTION: {t1} vs {t2} ---")
+        venue_str = "Neutral Venue" if args.neutral else f"Home: {t1} | Away: {t2}"
+        print(f"\n--- MATCH PREDICTION: {t1} vs {t2} ({venue_str}) ---")
+        print(f"Database: {json_file}")
         print(f"Expected Goals (xG): {t1} {xg1:.2f} - {xg2:.2f} {t2}\n")
         
-        print("MATCH ODDS:")
+        print("MATCH PROBABILITIES:")
         print(f"{t1} Win: {p_win * 100:.1f}%")
         print(f"Draw:      {p_draw * 100:.1f}%")
         print(f"{t2} Win: {p_loss * 100:.1f}%\n")
         
         print("TOP 3 MOST LIKELY EXACT SCORELINES:")
-        # Sort the dictionary by probability (highest first)
         sorted_scores = sorted(matrix.items(), key=lambda item: item[1], reverse=True)
         for i in range(3):
             score, prob = sorted_scores[i]
-            print(f"{score}: {prob * 100:.1f}%")
+            print(f"  {score}: {prob * 100:.1f}%")
+        print()
             
     except Exception as e:
         print(f"Error: {e}\n(Double-check your file path and team spelling!)")
