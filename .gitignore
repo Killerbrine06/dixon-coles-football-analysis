@@ -1,3 +1,5 @@
 plots/
 data/raw
 .DS_Store
+data/old_db
+__pycache__/
