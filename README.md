@@ -185,16 +185,16 @@ The `general_models/` directory contains supplementary curve-fitting and numeric
 
 ```bash
 # Fast Fourier Transform (FFT) signal reconstruction
-python general_models/fft.py
+python general_models/fft.py --db data/databases/epl.db --team Arsenal
 
 # Multivariate Linear Regression via Conjugate Gradient Least Squares (CGLS)
-python general_models/multivar_lin_reg.py
+python general_models/multivar_lin_reg.py --db data/databases/epl.db --team Arsenal
 
 # Natural Cubic Spline (C2) interpolation
-python general_models/splinec2.py
+python general_models/splinec2.py --db data/databases/epl.db --team Arsenal
 
 # Polynomial Least Squares fit
-python general_models/polynomial_fit.py
+python general_models/polynomial_fit.py --db data/databases/epl.db --team Arsenal
 ```
 
 ---
