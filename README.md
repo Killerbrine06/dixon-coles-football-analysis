@@ -24,12 +24,14 @@ This repository implements the predictive sports modeling framework established 
   $$w_k = \exp(-\xi \cdot \Delta t_k)$$
 - **Regularized Maximum Likelihood**: Solves parameters via L-BFGS-B with sample-size-invariant $L_2$ shrinkage and identifiability constraints.
 
-### Core Modules
+### Core Modules & Documentation
 
+- `PROJECT_CONTEXT.md`: Comprehensive engineering context and architecture guide for LLMs and developers.
 - `predict.py`: Computes expected goals ($xG$), win/draw/loss probabilities, and top scorelines for scheduled matches.
 - `dixon_coles_multithread.py`: Multi-threaded solver running walk-forward grid search over $\xi$ and exporting calibrated parameters to JSON.
 - `tools/db_pipeline.py`: Automated ETL pipeline that downloads match records, manages SQLite databases, and exports formatted CSV datasets.
 - `tools/run_test_suite.py`: Multi-tier evaluation engine running mathematical verification, benchmark evaluations, and rendering `Dixon_Coles_Evaluation_Report.pdf`.
+- `docs/Dixon_Coles_Lecture.md`: Pedagogical lecture on Poisson modeling and Dixon-Coles math with a worked pen-and-paper example.
 - `general_models/`: Exploratory statistical scripts (cubic splines, polynomial fit, CGLS regression, and FFT signal reconstruction).
 
 ---
