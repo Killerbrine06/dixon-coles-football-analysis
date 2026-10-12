@@ -1,42 +1,201 @@
+"""
+Fast Fourier Transform (FFT) Signal Reconstruction for Match Metrics.
+
+Loads a window of 10 consecutive finished matches from SQLite, extracts the
+shots on target percentage (SoT%) sequence, and performs Fast Fourier Transform (FFT)
+into the frequency domain followed by Inverse Fast Fourier Transform (IFFT)
+to reconstruct the continuous form signal.
+
+Usage:
+    python general_models/fft.py
+"""
+
+import argparse
+from pathlib import Path
+from typing import Any, Dict, Optional
+
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 
-# 1. Define the spacing and generate the x-axis points
-file_path = 'PSG_UCL_2023_24_Merged_Stats.csv'
-df = pd.read_csv(file_path)
+try:
+    from data_loader import PLOTS_DIR, load_consecutive_matches
+except ImportError:
+    from general_models.data_loader import PLOTS_DIR, load_consecutive_matches
 
-NB_OF_GAMES = 10
-COL_OF_INTEREST = 'SoT%'
-x = [i for i in range(1, NB_OF_GAMES + 1)]
-y = df[COL_OF_INTEREST].head(NB_OF_GAMES)
+# ---------------------------------------------------------------------------
+# Global Constants & Paths
+# ---------------------------------------------------------------------------
+ALGORITHM_NAME = "fft"
+WINDOW_SIZE = 10
+COL_OF_INTEREST = "SoT%"
 
-# 2. Perform the Fast Fourier Transform (FFT)
-# This maps our spatial data y into the frequency domain
-Y_fft = np.fft.fft(y)
 
-# 3. Perform the Inverse Fast Fourier Transform (IFFT)
-# This maps the frequency data back into the spatial domain, reconstructing the signal
-y_approx = np.fft.ifft(Y_fft)
+# ---------------------------------------------------------------------------
+# Mathematical Algorithm: Fast Fourier Transform & Inverse FFT
+# ---------------------------------------------------------------------------
+def run_fft(y_signal: np.ndarray) -> Dict[str, Any]:
+    """
+    Performs FFT analysis and IFFT signal reconstruction.
 
-# 4. Plot the results
-plt.figure(figsize=(10, 6))
+    Parameters
+    ----------
+    y_signal : np.ndarray
+        1D array of metric values across consecutive matches.
 
-# Plot the original data points
-plt.plot(x, y, 'ro', label='Original Data Points', markersize=6, zorder=5)
+    Returns
+    -------
+    Dict[str, Any]
+        Dictionary containing FFT coefficients, reconstructed signal, and metrics.
+    """
+    y = np.asarray(y_signal, dtype=float)
+    n = len(y)
+    x = np.arange(1, n + 1)
 
-# Plot the reconstructed approximation
-# Note: IFFT often returns numbers with infinitesimal imaginary components (e.g., + 0.00000001j) 
-# due to floating-point arithmetic. We use .real to plot purely the real numbers.
-plt.plot(x, y_approx.real, 'b-', label='Reconstructed Approximation (IFFT)', linewidth=2, alpha=0.8)
+    # 1. Forward Fast Fourier Transform (spatial -> frequency domain)
+    Y_fft = np.fft.fft(y)
 
-plt.title('FFT and Inverse FFT Reconstruction ($h=1$)')
-plt.xlabel('X (spacing $h=1$)')
-plt.ylabel('Y')
-plt.legend()
-plt.grid(True, linestyle='--', alpha=0.6)
-plt.tight_layout()
+    # 2. Inverse Fast Fourier Transform (frequency -> spatial domain)
+    y_approx = np.fft.ifft(Y_fft)
 
-# Save the plot
-plt.savefig('fft_reconstruction.png')
-plt.close()
+    # Note: IFFT often returns infinitesimal imaginary components due to floating-point
+    # arithmetic. We take the real component for the physical reconstruction.
+    y_approx_real = y_approx.real
+    max_recon_error = float(np.max(np.abs(y - y_approx_real)))
+
+    return {
+        "x": x,
+        "y": y,
+        "Y_fft": Y_fft,
+        "y_approx": y_approx_real,
+        "max_recon_error": max_recon_error,
+        "frequencies": np.fft.fftfreq(n),
+        "magnitudes": np.abs(Y_fft),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Visualization
+# ---------------------------------------------------------------------------
+def plot_and_save(
+    df: pd.DataFrame,
+    results: Dict[str, Any],
+    output_path: Path,
+) -> None:
+    """
+    Renders and saves the FFT signal reconstruction plot.
+    """
+    team_name = df["Team"].iloc[0] if "Team" in df.columns else "Selected Window"
+    x = results["x"]
+    y = results["y"]
+    y_approx = results["y_approx"]
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    plt.figure(figsize=(10, 6))
+
+    # Plot original data points
+    plt.plot(
+        x,
+        y,
+        "ro",
+        label="Original Data Points",
+        markersize=7,
+        zorder=5,
+    )
+
+    # Plot reconstructed approximation via IFFT
+    plt.plot(
+        x,
+        y_approx,
+        "b-",
+        label="Reconstructed Approximation (IFFT)",
+        linewidth=2,
+        alpha=0.8,
+    )
+
+    plt.title(
+        f"FFT and Inverse FFT Reconstruction ($h=1$) - {team_name}\n"
+        f"10 Consecutive Matches ({df['Date'].iloc[0]} to {df['Date'].iloc[-1]})",
+        fontsize=13,
+        fontweight="bold",
+    )
+    plt.xlabel("Match Index ($h=1$)", fontsize=11)
+    plt.ylabel(f"{COL_OF_INTEREST}", fontsize=11)
+    plt.xticks(x)
+    plt.legend(frameon=True, facecolor="white", framealpha=0.9)
+    plt.grid(True, linestyle="--", alpha=0.6)
+    plt.tight_layout()
+
+    plt.savefig(output_path, dpi=300)
+    plt.close()
+
+
+# ---------------------------------------------------------------------------
+# Main Execution Workflow
+# ---------------------------------------------------------------------------
+def main(args: Optional[list] = None) -> None:
+    parser = argparse.ArgumentParser(
+        description="Fast Fourier Transform (FFT) signal reconstruction on match metrics."
+    )
+    parser.add_argument(
+        "--db",
+        type=str,
+        required=True,
+        help="Path to SQLite database.",
+    )
+    parser.add_argument(
+        "--team",
+        type=str,
+        required=True,
+        help="Team name to sample 10 consecutive matches for.",
+    )
+    parsed_args = parser.parse_args(args)
+
+    output_path = PLOTS_DIR / f"{ALGORITHM_NAME}.png"
+
+    print("=" * 60)
+    print("      FAST FOURIER TRANSFORM (FFT) SIGNAL RECONSTRUCTION      ")
+    print("=" * 60)
+
+    # 1. Load consecutive matches from SQLite
+    df = load_consecutive_matches(
+        db_path=parsed_args.db,
+        team=parsed_args.team,
+        window_size=WINDOW_SIZE,
+    )
+
+    team_name = df["Team"].iloc[0] if "Team" in df.columns else "League"
+    print(f"Sampled Team        : {team_name}")
+    print(f"Match Date Range    : {df['Date'].iloc[0]} to {df['Date'].iloc[-1]}")
+    print(f"Window Size         : {len(df)} consecutive matches")
+    print("-" * 60)
+    print(f"{'Idx':<4} {'Date':<12} {'Opponent':<18} {'Venue':<6} {'GF':<4} {'SoT%':<8}")
+    print("-" * 60)
+    for idx, row in df.iterrows():
+        venue = "Home" if row["Is_Home"] == 1 else "Away"
+        print(
+            f"{idx + 1:<4} {row['Date']:<12} {row['Opponent']:<18} "
+            f"{venue:<6} {row['GF']:<4.0f} {row['SoT%']:<8.2f}%"
+        )
+    print("-" * 60)
+
+    # 2. Run the mathematical algorithm
+    y = df[COL_OF_INTEREST].values
+    results = run_fft(y)
+
+    print(f"Algorithm Executed  : 1D Fast Fourier Transform & Inverse FFT")
+    print(f"Max Recon Error     : {results['max_recon_error']:.2e} (Identity Verified)")
+    print(f"DC Component (Freq=0): {results['magnitudes'][0] / len(y):.2f}% (Average SoT%)")
+    print("-" * 60)
+
+    # 3. Plot and save results
+    plot_and_save(df, results, output_path)
+    print(f"Plot Successfully Saved -> {output_path}")
+    print("=" * 60)
+
+
+if __name__ == "__main__":
+    main()

@@ -35,7 +35,6 @@ def compute_nll_active(active_params, t1_mapped, t2_mapped, gf, ga, home_status,
     idx_01 = (gf == 0) & (ga == 1)
     idx_11 = (gf == 1) & (ga == 1)
 
-    # FIX 1: Proper Dixon-Coles tau terms (Swap fixed)
     tau[idx_00] = 1.0 - (lambda_val[idx_00] * mu_val[idx_00] * rho)
     tau[idx_10] = 1.0 + (mu_val[idx_10] * rho)      # Fixed: uses mu
     tau[idx_01] = 1.0 + (lambda_val[idx_01] * rho)  # Fixed: uses lambda
@@ -50,7 +49,6 @@ def compute_nll_active(active_params, t1_mapped, t2_mapped, gf, ga, home_status,
 
     total_nll = -np.sum(log_likelihood)
     
-    # FIX 2: Sample-Size-Invariant Regularization
     effective_n = max(1.0, np.sum(weights))
     collinearity_penalty = 10000.0 * (np.mean(a)**2)
     l2_penalty = (10.0 / effective_n) * (np.sum(a**2) + np.sum(b**2))
